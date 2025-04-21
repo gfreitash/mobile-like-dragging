@@ -1,7 +1,7 @@
 [manifest]
 version = "1.0.0"
 dump_lua = true
-priority = 1
+priority = 1 # Keep priority as is or adjust if needed relative to other mods
 
 [[patches]]
 [patches.pattern]
@@ -10,136 +10,200 @@ pattern = "function EMPTY(t)"
 position = "before"
 payload = '''
 function create_drag_target_from_card(_card)
-  if _card and G.STAGE == G.STAGES.RUN then
-      G.DRAG_TARGETS = G.DRAG_TARGETS or {
-          S_buy =         Moveable{T={x = G.jokers.T.x, y = G.jokers.T.y - 0.1, w = G.consumeables.T.x + G.consumeables.T.w - G.jokers.T.x, h = G.jokers.T.h+0.6}},
-          S_buy_and_use=  Moveable{T={x = G.deck.T.x + 0.2, y = G.deck.T.y - 5.1, w = G.deck.T.w-0.1, h = 4.5}},
-          C_sell =        Moveable{T={x = G.jokers.T.x, y = G.jokers.T.y - 0.2, w = G.jokers.T.w, h = G.jokers.T.h+0.6}},
-          J_sell =        Moveable{T={x = G.consumeables.T.x+0.3, y = G.consumeables.T.y - 0.2, w = G.consumeables.T.w-0.3, h = G.consumeables.T.h+0.6}},
-          C_use =         Moveable{T={x = G.deck.T.x + 0.2, y = G.deck.T.y - 5.1, w = G.deck.T.w-0.1, h =4.5}},
-          P_select =      Moveable{T={x = G.play.T.x, y = G.play.T.y - 2, w = G.play.T.w + 2, h = G.play.T.h + 1}},
-      }
+  -- Only proceed if the card is valid and we are in the run stage
+  if not _card or G.STAGE ~= G.STAGES.RUN then return end
 
-      if _card.area and (_card.area == G.shop_jokers or _card.area == G.shop_vouchers or _card.area == G.shop_booster) then
-          local buy_loc = copy_table(localize((_card.area == G.shop_vouchers and 'ml_redeem_target') or (_card.area == G.shop_booster and 'ml_open_target') or 'ml_buy_target'))
-          buy_loc[#buy_loc + 1] = '$'.._card.cost
-          drag_target({ cover = G.DRAG_TARGETS.S_buy, colour = adjust_alpha(G.C.GREEN, (G.SETTINGS.drag_area_opacity / 100)), text = buy_loc,
-              card = _card,
-              active_check = (function(other)
-                  return G.FUNCS.can_buy_check(other)
-              end),
-              release_func = (function(other)
-                  if other.area == G.shop_jokers and G.FUNCS.can_buy_check(other) then
-                      if G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.button_listen == 'buy_from_shop' then
-                        G.FUNCS.tut_next()
-                      end
-                      G.FUNCS.buy_from_shop({config = {
-                          ref_table = other,
-                          id = 'buy'
-                      }})
-                      return
-                  elseif other.area == G.shop_vouchers and G.FUNCS.can_buy_check(other) then
-                      G.FUNCS.use_card({config={ref_table = other}})
-                  elseif other.area == G.shop_booster and G.FUNCS.can_buy_check(other) then
+  -- Define Drag Target Areas (or ensure they are defined if already present)
+  G.DRAG_TARGETS = G.DRAG_TARGETS or {}
+
+  -- Define standard areas
+  G.DRAG_TARGETS.S_buy_and_use = G.DRAG_TARGETS.S_buy_and_use or Moveable{T={x = G.deck.T.x + 0.2, y = G.deck.T.y - 5.1, w = G.deck.T.w-0.1, h = 4.5}}
+  G.DRAG_TARGETS.C_sell = G.DRAG_TARGETS.C_sell or Moveable{T={x = G.jokers.T.x, y = G.jokers.T.y - 0.2, w = G.jokers.T.w, h = G.jokers.T.h+0.6}}
+  G.DRAG_TARGETS.J_sell = G.DRAG_TARGETS.J_sell or Moveable{T={x = G.consumeables.T.x+0.3, y = G.consumeables.T.y - 0.2, w = G.consumeables.T.w-0.3, h = G.consumeables.T.h+0.6}}
+  G.DRAG_TARGETS.C_use = G.DRAG_TARGETS.C_use or Moveable{T={x = G.deck.T.x + 0.2, y = G.deck.T.y - 5.1, w = G.deck.T.w-0.1, h =4.5}}
+  G.DRAG_TARGETS.P_select = G.DRAG_TARGETS.P_select or Moveable{T={x = G.play.T.x, y = G.play.T.y - 2, w = G.play.T.w + 2, h = G.play.T.h + 1}}
+
+  -- === LTD Integration Start ===
+  local ltd_active = LTDM and LTDM.state and LTDM.state.ltd
+  local ltd_config = ltd_active and LTDM.mod and LTDM.mod.config
+
+  -- Define LTD Lock/Unlock Area (aligned with Buy vertically)
+  if ltd_active then
+      G.DRAG_TARGETS.L_lock_unlock = G.DRAG_TARGETS.L_lock_unlock or Moveable{T={x = G.consumeables.T.x+0.3, y = G.consumeables.T.y - 0.1, w = G.consumeables.T.w-0.3, h = G.consumeables.T.h+0.6}} -- Changed y offset to -0.1
+      -- Define Buy Area (resized to match C_sell width/x)
+      G.DRAG_TARGETS.S_buy = G.DRAG_TARGETS.S_buy or Moveable{T={x = G.jokers.T.x, y = G.jokers.T.y - 0.1, w = G.jokers.T.w, h = G.jokers.T.h+0.6}}
+  else
+      -- Define Default Buy Area (original full width if LTD is not active)
+      G.DRAG_TARGETS.S_buy = G.DRAG_TARGETS.S_buy or Moveable{T={x = G.jokers.T.x, y = G.jokers.T.y - 0.1, w = G.consumeables.T.x + G.consumeables.T.w - G.jokers.T.x, h = G.jokers.T.h+0.6}}
+  end
+  -- === LTD Integration End ===
+
+
+  -- Check if the card is in a shop area
+  local is_shop_item = _card.area and (_card.area == G.shop_jokers or _card.area == G.shop_vouchers or _card.area == G.shop_booster)
+  local is_pack_item = _card.area and _card.area == G.pack_cards
+  local is_owned_item = _card.area and (_card.area == G.jokers or _card.area == G.consumeables)
+
+  -- Shop Item Targets (Buy, Buy&Use, Lock/Unlock)
+  if is_shop_item then
+      -- Create Standard Buy Target
+      local buy_loc = copy_table(localize((_card.area == G.shop_vouchers and 'ml_redeem_target') or (_card.area == G.shop_booster and 'ml_open_target') or 'ml_buy_target'))
+      buy_loc[#buy_loc + 1] = '$'.._card.cost
+      drag_target({
+          cover = G.DRAG_TARGETS.S_buy,
+          colour = adjust_alpha(G.C.GREEN, (G.SETTINGS.drag_area_opacity / 100)),
+          text = buy_loc,
+          card = _card,
+          active_check = G.FUNCS.can_buy_check, -- Use existing check
+          release_func = function(other)
+              if G.FUNCS.can_buy_check(other) then
+                  if other.area == G.shop_jokers then
+                      if G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.button_listen == 'buy_from_shop' then G.FUNCS.tut_next() end
+                      G.FUNCS.buy_from_shop({config = { ref_table = other, id = 'buy' }})
+                  elseif other.area == G.shop_vouchers or other.area == G.shop_booster then
                       G.FUNCS.use_card({config={ref_table = other}})
                   end
-              end)
-          })
+              end
+          end
+      })
 
-          if G.FUNCS.can_buy_and_use_check(_card) then
-              local buy_use_loc = copy_table(localize('ml_buy_and_use_target'))
-              buy_use_loc[#buy_use_loc + 1] = '$'.._card.cost
-              drag_target({ cover = G.DRAG_TARGETS.S_buy_and_use, colour = adjust_alpha(G.C.ORANGE, (G.SETTINGS.drag_area_opacity / 100)),text=buy_use_loc,
+      -- Create Standard Buy & Use Target (if applicable)
+      if G.FUNCS.can_buy_and_use_check(_card) then
+          local buy_use_loc = copy_table(localize('ml_buy_and_use_target'))
+          buy_use_loc[#buy_use_loc + 1] = '$'.._card.cost
+          drag_target({
+              cover = G.DRAG_TARGETS.S_buy_and_use,
+              colour = adjust_alpha(G.C.ORANGE, (G.SETTINGS.drag_area_opacity / 100)),
+              text = buy_use_loc,
               card = _card,
-              active_check = (function(other)
-                  return G.FUNCS.can_buy_and_use_check(other)
-              end),
-              release_func = (function(other)
+              active_check = G.FUNCS.can_buy_and_use_check, -- Use existing check
+              release_func = function(other)
                   if G.FUNCS.can_buy_and_use_check(other) then
-                      G.FUNCS.buy_from_shop({config = {
-                          ref_table = other,
-                          id = 'buy_and_use'
-                      }})
-                      return
+                      G.FUNCS.buy_from_shop({config = { ref_table = other, id = 'buy_and_use' }})
                   end
-              end)
-              })
-          end
-      end
-
-      if _card.area and (_card.area == G.pack_cards) then
-          if _card.ability.consumeable and not (_card.ability.set == 'Planet') then
-              drag_target({ cover = G.DRAG_TARGETS.C_use, colour = adjust_alpha(G.C.RED, (G.SETTINGS.drag_area_opacity / 100)),text = {localize('b_use')},
-                  card = _card,
-                  active_check = (function(other)
-                      return other:can_use_consumeable()
-                  end),
-                  release_func = (function(other)
-                      if other:can_use_consumeable() then
-                        G.FUNCS.use_card({config={ref_table = other}})
-                      end
-                  end)
-              })
-          else
-            if _card.ability.set == 'Joker' and G.SETTINGS.move_select_joker_drag_area then
-              -- We move the select joker drag area from the middle of the screen to the top like if the settings is enabled
-              drag_target({ cover = G.DRAG_TARGETS.S_buy, colour = adjust_alpha(G.C.GREEN, (G.SETTINGS.drag_area_opacity / 100)), text = {localize('b_select')},
-                  card = _card,
-                  active_check = (function(other)
-                      return G.FUNCS.can_select_card_check(other)
-                  end),
-                  release_func = (function(other)
-                      if G.FUNCS.can_select_card_check(other) then
-                          G.FUNCS.use_card({config={ref_table = other}})
-                      end
-                  end)
-              })
-            else
-              drag_target({ cover = G.DRAG_TARGETS.P_select, colour = adjust_alpha(G.C.GREEN, (G.SETTINGS.drag_area_opacity / 100)), text = {localize('b_select')},
-                  card = _card,
-                  active_check = (function(other)
-                      return G.FUNCS.can_select_card_check(other)
-                  end),
-                  release_func = (function(other)
-                      if G.FUNCS.can_select_card_check(other) then
-                          G.FUNCS.use_card({config={ref_table = other}})
-                      end
-                  end)
-              })
-            end
-          end
-      end
-
-      if _card.area and (_card.area == G.jokers or _card.area == G.consumeables) then
-          local sell_loc = copy_table(localize('ml_sell_target'))
-          sell_loc[#sell_loc + 1] = '$'..(_card.facing == 'back' and '?' or _card.sell_cost)
-          drag_target({ cover = _card.area == G.consumeables and G.DRAG_TARGETS.C_sell or G.DRAG_TARGETS.J_sell, colour = adjust_alpha(G.C.GOLD, (G.SETTINGS.drag_area_opacity / 100)),text = sell_loc,
-              card = _card,
-              active_check = (function(other)
-                  return other:can_sell_card()
-              end),
-              release_func = (function(other)
-                  G.FUNCS.sell_card{config={ref_table=other}}
-              end)
+              end
           })
-          if _card.area == G.consumeables then
-              drag_target({ cover = G.DRAG_TARGETS.C_use, colour = adjust_alpha(G.C.RED, (G.SETTINGS.drag_area_opacity / 100)),text = {localize('b_use')},
+      end
+
+      -- === LTD Integration: Create Lock/Unlock Target ===
+      if ltd_active and _card.ltdm_state then
+          local is_booster = _card.ability.set == 'Booster'
+          -- Check if the item type is lockable (Joker, Voucher, or Booster if enabled)
+          if _card.area == G.shop_jokers or _card.area == G.shop_vouchers or (is_booster and ltd_config.booster_pack_enabled) then
+
+              local ltd_state = _card.ltdm_state
+              local lock_cost = ltd_state.no_locked and (LTDM.state.ltd.price or 1) or 0
+              local lock_cost_text = ltd_state.no_locked and ('$' .. lock_cost) or localize('ltd_button_tooltip_free')
+
+              -- Get the localized text (could be string or table)
+              local localized_text = localize(ltd_state.locked and 'ltd_button_locked' or 'ltd_button_lock')
+              -- Ensure lock_text is always a table for DynaText
+              local lock_text = type(localized_text) == 'table' and copy_table(localized_text) or { localized_text }
+              -- Now append the cost text safely
+              lock_text[#lock_text + 1] = lock_cost_text -- Add cost below main text
+
+              drag_target({
+                  cover = G.DRAG_TARGETS.L_lock_unlock, -- Use the new area over consumables
+                  colour = adjust_alpha(ltd_state.locked and LTDM.UIDEF.LTD_STATE_COLOR.LOCKED or LTDM.UIDEF.LTD_STATE_COLOR.UNLOCKED, (G.SETTINGS.drag_area_opacity / 100)),
+                  text = lock_text,
+                  card = _card,
+                  active_check = function(other) -- Corrected active_check logic
+                      if other.ltdm_state.locked then
+                          return true -- Can always unlock
+                      else
+                          -- Can lock if it's free (already paid once) OR if it costs money and is affordable
+                          return (not other.ltdm_state.no_locked) or ((LTDM.state.ltd.price or 1) <= (G.GAME.dollars - G.GAME.bankrupt_at))
+                      end
+                  end,
+                  release_func = function(other)
+                      -- Re-check affordability before acting
+                      local current_ltd_state = other.ltdm_state
+                      local current_lock_cost = current_ltd_state.no_locked and (LTDM.state.ltd.price or 1) or 0
+                      local can_lock_now = current_ltd_state.locked or (not current_ltd_state.no_locked) or (current_lock_cost <= (G.GAME.dollars - G.GAME.bankrupt_at))
+
+                      if not can_lock_now then return end -- Safety check
+
+                      if current_ltd_state.locked then
+                          LTDM.state.ltd:unlock_item(current_ltd_state.id)
+                          play_sound('cardSlide2', nil, 0.3) -- Sound feedback for unlock
+                      else
+                          LTDM.state.ltd:lock_item(other)
+                          play_sound('cardSlide1', nil, 0.3) -- Sound feedback for lock
+                      end
+                  end
+              })
+          end
+      end
+      -- === LTD Integration End ===
+  end
+
+  -- Pack Item Targets (Select/Use)
+  if is_pack_item then
+      if _card.ability.consumeable and not (_card.ability.set == 'Planet') then
+          -- Use Consumable from Pack
+          drag_target({
+              cover = G.DRAG_TARGETS.C_use,
+              colour = adjust_alpha(G.C.RED, (G.SETTINGS.drag_area_opacity / 100)),
+              text = {localize('b_use')},
               card = _card,
-              active_check = (function(other)
-                  return other:can_use_consumeable()
-              end),
-              release_func = (function(other)
+              active_check = function(other) return other:can_use_consumeable() end,
+              release_func = function(other)
+                  if other:can_use_consumeable() then G.FUNCS.use_card({config={ref_table = other}}) end
+              end
+          })
+      else
+          -- Select Card from Pack (Handles Joker Booster move setting)
+          local select_target_area = G.DRAG_TARGETS.P_select
+          if _card.ability.set == 'Joker' and G.SETTINGS.move_select_joker_drag_area then
+              select_target_area = G.DRAG_TARGETS.S_buy -- Reuse the buy area if setting is on
+          end
+          drag_target({
+              cover = select_target_area,
+              colour = adjust_alpha(G.C.GREEN, (G.SETTINGS.drag_area_opacity / 100)),
+              text = {localize('b_select')},
+              card = _card,
+              active_check = G.FUNCS.can_select_card_check, -- Use existing check
+              release_func = function(other)
+                  if G.FUNCS.can_select_card_check(other) then G.FUNCS.use_card({config={ref_table = other}}) end
+              end
+          })
+      end
+  end
+
+  -- Owned Item Targets (Sell/Use)
+  if is_owned_item then
+      -- Sell Target
+      local sell_loc = copy_table(localize('ml_sell_target'))
+      sell_loc[#sell_loc + 1] = '$'..(_card.facing == 'back' and '?' or _card.sell_cost)
+      drag_target({
+          cover = _card.area == G.consumeables and G.DRAG_TARGETS.C_sell or G.DRAG_TARGETS.J_sell,
+          colour = adjust_alpha(G.C.GOLD, (G.SETTINGS.drag_area_opacity / 100)),
+          text = sell_loc,
+          card = _card,
+          active_check = function(other) return other:can_sell_card() end,
+          release_func = function(other)
+              if other:can_sell_card() then G.FUNCS.sell_card{config={ref_table=other}} end
+          end
+      })
+
+      -- Use Target (if consumable)
+      if _card.area == G.consumeables then
+          drag_target({
+              cover = G.DRAG_TARGETS.C_use,
+              colour = adjust_alpha(G.C.RED, (G.SETTINGS.drag_area_opacity / 100)),
+              text = {localize('b_use')},
+              card = _card,
+              active_check = function(other) return other:can_use_consumeable() end,
+              release_func = function(other)
                   if other:can_use_consumeable() then
-                    G.FUNCS.use_card({config={ref_table = other}})
-                    if G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.button_listen == 'use_card' then
-                      G.FUNCS.tut_next()
-                    end
+                      G.FUNCS.use_card({config={ref_table = other}})
+                      if G.OVERLAY_TUTORIAL and G.OVERLAY_TUTORIAL.button_listen == 'use_card' then G.FUNCS.tut_next() end
                   end
-              end)
+              end
           })
-          end
       end
   end
 end
 '''
+
 match_indent = true
