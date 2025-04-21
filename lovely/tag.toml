@@ -8,5 +8,7 @@ priority = 1
 target = "tag.lua"
 pattern = "tag_sprite.hover = function(_self)"
 position = "before"
-payload = "    tag_sprite.touch_collide_tilt = true\n"
+payload = '''
+    tag_sprite.touch_collide_tilt = true
+'''
 match_indent = false
